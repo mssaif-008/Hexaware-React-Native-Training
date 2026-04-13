@@ -72,7 +72,7 @@ export default function LoginPage() {
                 <Text style={styles.inputLabel}>Email</Text>
                 <TextInput
                     style={styles.input}
-                    placeholder="Enter your email"
+                    placeholder="Enter your email (eve.holt@reqres.in)"
                     placeholderTextColor="#555"
                     value={email}
                     onChangeText={setEmail}

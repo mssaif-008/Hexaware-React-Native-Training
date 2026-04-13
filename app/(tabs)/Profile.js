@@ -84,20 +84,41 @@ export default function Profile() {
             quality: 0.7,
         });
         if (!result.canceled && result.assets.length > 0) {
-            await uploadImageToCloudinary(result.assets[0].uri);
+            await uploadImageToCloudinary(result.assets[0]);
         }
     };
 
-    const uploadImageToCloudinary = async (localUri) => {
+    const uploadImageToCloudinary = async (asset) => {
         setUploading(true);
         try {
             const formData = new FormData();
-            formData.append('file', { uri: localUri, type: 'image/jpeg', name: 'profile.jpg' });
+
+            if (Platform.OS === 'web') {
+                const webFile = asset.file;
+
+                if (webFile) {
+                    formData.append('file', webFile);
+                } else {
+                    const response = await fetch(asset.uri);
+                    const blob = await response.blob();
+                    const fallbackFileName = asset.fileName || 'profile.jpg';
+                    const fallbackType = asset.mimeType || blob.type || 'image/jpeg';
+
+                    formData.append('file', new File([blob], fallbackFileName, { type: fallbackType }));
+                }
+            } else {
+                formData.append('file', {
+                    uri: asset.uri,
+                    type: asset.mimeType || 'image/jpeg',
+                    name: asset.fileName || 'profile.jpg',
+                });
+            }
+
             formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 
             const response = await fetch(
                 `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-                { method: 'POST', body: formData, headers: { 'Content-Type': 'multipart/form-data' } },
+                { method: 'POST', body: formData },
             );
             const data = await response.json();
             if (data.secure_url) {
