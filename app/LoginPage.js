@@ -9,6 +9,7 @@ export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const loginApiKey = process.env.EXPO_PUBLIC_LOGIN_API;
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -23,12 +24,17 @@ export default function LoginPage() {
         setIsLoading(true);
 
         try {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+
+            if (loginApiKey) {
+                headers['x-api-key'] = loginApiKey;
+            }
+
             const response = await fetch('https://reqres.in/api/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': 'reqres_4711c3c92a804cc8ab5e9e04f5aa54dc',
-                },
+                headers,
                 body: JSON.stringify({
                     email: email.trim(),
                     password: password,

@@ -17,7 +17,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { getStorageItemAsync, setStorageItemAsync } from '../../utils/storage';
 import { useAuth } from '../../context/ctx/auth';
 import { Platform } from 'react-native';
-const CLOUDINARY_CLOUD_NAME = 'dweisyego';
+const CLOUDINARY_CLOUD_NAME =
+    process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ;
 const CLOUDINARY_UPLOAD_PRESET = 'the-upload-preset';
 
 const KEY_PHOTO = 'user_profile_photo_url';
@@ -46,6 +47,14 @@ export default function Profile() {
     const [tempName, setTempName] = useState('');
     const [tempExperience, setTempExperience] = useState('');
 
+    const showMessage = (title, message) => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            window.alert(message ? `${title}: ${message}` : title);
+            return;
+        }
+        Alert.alert(title, message);
+    };
+
     useEffect(() => {
         const load = async () => {
             try {
@@ -72,16 +81,19 @@ export default function Profile() {
     }, []);
 
     const pickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permission Required', 'Please allow access to your photo library.');
-            return;
+        if (Platform.OS !== 'web') {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                showMessage('Permission Required', 'Please allow access to your photo library.');
+                return;
+            }
         }
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.7,
+            base64: Platform.OS === 'web',
         });
         if (!result.canceled && result.assets.length > 0) {
             await uploadImageToCloudinary(result.assets[0]);
@@ -93,7 +105,12 @@ export default function Profile() {
         try {
             const formData = new FormData();
 
-            if (Platform.OS === 'web') {
+            if (Platform.OS === 'web' && asset.base64) {
+                const base64MimeType = asset.mimeType || 'image/jpeg';
+                formData.append('file', `data:${base64MimeType};base64,${asset.base64}`);
+            } else if (Platform.OS === 'web' && asset.file) {
+                formData.append('file', asset.file);
+            } else if (Platform.OS === 'web') {
                 const webFile = asset.file;
 
                 if (webFile) {
@@ -129,7 +146,7 @@ export default function Profile() {
                 throw new Error(data.error?.message || 'Image upload failed');
             }
         } catch (e) {
-            Alert.alert('Photo Upload Failed', e.message);
+            showMessage('Photo Upload Failed', e.message || 'Could not upload image');
         } finally {
             setUploading(false);
         }
@@ -147,29 +164,30 @@ export default function Profile() {
             }
 
             const file = result.assets[0];
-            await uploadResumeToCloudinary(file.uri, file.name ?? 'resume.pdf');
+            await uploadResumeToCloudinary(file);
 
         } catch (e) {
-            Alert.alert('Error', e.message || 'Could not open document picker');
+            showMessage('Error', e.message || 'Could not open document picker');
         }
     };
 
-    const uploadResumeToCloudinary = async (localUri, fileName) => {
+    const uploadResumeToCloudinary = async (fileAsset) => {
         setResumeUploading(true);
         try {
             const formData = new FormData();
+            const fileName = fileAsset.name ?? 'resume.pdf';
 
-            if (Platform.OS === 'web') {
-                // On web, fetch the URI as a blob and append as a File
-                const response = await fetch(localUri);
+            if (Platform.OS === 'web' && fileAsset.file) {
+                formData.append('file', fileAsset.file);
+            } else if (Platform.OS === 'web') {
+                const response = await fetch(fileAsset.uri);
                 const blob = await response.blob();
-                const file = new File([blob], fileName, { type: 'application/pdf' });
+                const file = new File([blob], fileName, { type: fileAsset.mimeType || 'application/pdf' });
                 formData.append('file', file);
             } else {
-                // On native (iOS/Android), use the RN object format
                 formData.append('file', {
-                    uri: localUri,
-                    type: 'application/pdf',
+                    uri: fileAsset.uri,
+                    type: fileAsset.mimeType || 'application/pdf',
                     name: fileName,
                 });
             }
@@ -201,7 +219,7 @@ export default function Profile() {
                 throw new Error(data.error?.message || 'Resume upload failed');
             }
         } catch (e) {
-            Alert.alert('Resume Upload Failed', e.message || 'Something went wrong');
+            showMessage('Resume Upload Failed', e.message || 'Something went wrong');
         } finally {
             setResumeUploading(false);
         }
@@ -209,6 +227,10 @@ export default function Profile() {
 
     const openResume = async () => {
         if (!resumeUrl) return;
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            window.open(resumeUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
         await WebBrowser.openBrowserAsync(resumeUrl);
     };
 
@@ -225,8 +247,8 @@ export default function Profile() {
     const handleSaveProfile = async () => {
         const trimmedName = tempName.trim();
         const trimmedExp = tempExperience.trim();
-        if (!trimmedName) { Alert.alert('Name cannot be empty'); return; }
-        if (!trimmedExp) { Alert.alert('Experience cannot be empty'); return; }
+        if (!trimmedName) { showMessage('Error', 'Name cannot be empty'); return; }
+        if (!trimmedExp) { showMessage('Error', 'Experience cannot be empty'); return; }
 
         await setStorageItemAsync(KEY_NAME, trimmedName);
         await setStorageItemAsync(KEY_EXPERIENCE, trimmedExp);
